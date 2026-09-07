@@ -1,0 +1,167 @@
+/* ClovaKey design tokens.
+ *
+ * Dark-first. The palette is drawn from the ClovaKey icon — emerald / teal /
+ * aqua / mint — used as a restrained accent over a calm, desaturated ground.
+ * Light and dark are both fully defined; the app sets [data-theme] on <html>,
+ * and "system" falls back to prefers-color-scheme. */
+
+:root {
+  /* ---- Accent (emerald / mint / teal) ---- */
+  --accent: #21c99b;
+  --accent-strong: #10b981;
+  --accent-bright: #4fe3bd;
+  --accent-contrast: #04140f;
+  --accent-soft: rgba(33, 201, 155, 0.14);
+  --accent-softer: rgba(33, 201, 155, 0.08);
+  --accent-ring: rgba(33, 201, 155, 0.45);
+
+  /* ---- Status ---- */
+  --danger: #f0575f;
+  --danger-soft: rgba(240, 87, 95, 0.14);
+  --warning: #efb45a;
+  --warning-soft: rgba(239, 180, 90, 0.15);
+  --info: #4bb3e6;
+
+  /* ---- Radii ---- */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* ---- Spacing ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* ---- Typography ---- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "Inter", Roboto, system-ui, sans-serif;
+  --font-code: "SF Mono", "SFMono-Regular", ui-monospace, "Cascadia Code",
+    "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+
+  /* ---- Layout ---- */
+  --sidebar-w: 232px;
+  --titlebar-h: 44px;
+}
+
+/* ============================ DARK (default) ============================ */
+:root,
+:root[data-theme="dark"] {
+  --bg: #0b100e;
+  --bg-2: #0e1512;
+  --bg-grad-a: #0d1512;
+  --bg-grad-b: #0a0f0d;
+
+  --sidebar-bg: rgba(16, 24, 20, 0.72);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+
+  --surface: #131b18;
+  --surface-2: #172019;
+  --surface-hover: #1b2620;
+  --surface-active: #20302a;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --text: #eaf1ed;
+  --text-2: #9fb0a8;
+  --text-3: #6b7d75;
+  --text-inverse: #0b100e;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.6);
+
+  --code-bg: rgba(33, 201, 155, 0.06);
+  --overlay: rgba(4, 8, 6, 0.62);
+}
+
+/* ============================ LIGHT ============================ */
+:root[data-theme="light"] {
+  --bg: #f4f7f5;
+  --bg-2: #eef2f0;
+  --bg-grad-a: #eef3f0;
+  --bg-grad-b: #f5f8f6;
+
+  --sidebar-bg: rgba(240, 244, 242, 0.8);
+  --sidebar-border: rgba(0, 0, 0, 0.07);
+
+  --surface: #ffffff;
+  --surface-2: #f7faf8;
+  --surface-hover: #f1f5f3;
+  --surface-active: #e8f1ec;
+
+  --border: rgba(15, 30, 24, 0.1);
+  --border-strong: rgba(15, 30, 24, 0.18);
+
+  --text: #10201a;
+  --text-2: #52625b;
+  --text-3: #8b988f;
+  --text-inverse: #ffffff;
+
+  --accent: #0f9d76;
+  --accent-strong: #0b8862;
+  --accent-bright: #12b285;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(15, 157, 118, 0.12);
+  --accent-softer: rgba(15, 157, 118, 0.07);
+  --accent-ring: rgba(15, 157, 118, 0.4);
+
+  --shadow-sm: 0 1px 2px rgba(16, 40, 30, 0.06);
+  --shadow-md: 0 8px 24px rgba(16, 40, 30, 0.1);
+  --shadow-lg: 0 24px 60px rgba(16, 40, 30, 0.16);
+  --shadow-pop: 0 14px 44px rgba(16, 40, 30, 0.18);
+
+  --code-bg: rgba(15, 157, 118, 0.07);
+  --overlay: rgba(20, 40, 32, 0.32);
+}
+
+/* System theme (no explicit choice) → follow the OS. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f4f7f5;
+    --bg-2: #eef2f0;
+    --bg-grad-a: #eef3f0;
+    --bg-grad-b: #f5f8f6;
+    --sidebar-bg: rgba(240, 244, 242, 0.8);
+    --sidebar-border: rgba(0, 0, 0, 0.07);
+    --surface: #ffffff;
+    --surface-2: #f7faf8;
+    --surface-hover: #f1f5f3;
+    --surface-active: #e8f1ec;
+    --border: rgba(15, 30, 24, 0.1);
+    --border-strong: rgba(15, 30, 24, 0.18);
+    --text: #10201a;
+    --text-2: #52625b;
+    --text-3: #8b988f;
+    --text-inverse: #ffffff;
+    --accent: #0f9d76;
+    --accent-strong: #0b8862;
+    --accent-bright: #12b285;
+    --accent-contrast: #ffffff;
+    --accent-soft: rgba(15, 157, 118, 0.12);
+    --accent-softer: rgba(15, 157, 118, 0.07);
+    --accent-ring: rgba(15, 157, 118, 0.4);
+    --shadow-sm: 0 1px 2px rgba(16, 40, 30, 0.06);
+    --shadow-md: 0 8px 24px rgba(16, 40, 30, 0.1);
+    --shadow-lg: 0 24px 60px rgba(16, 40, 30, 0.16);
+    --shadow-pop: 0 14px 44px rgba(16, 40, 30, 0.18);
+    --code-bg: rgba(15, 157, 118, 0.07);
+    --overlay: rgba(20, 40, 32, 0.32);
+  }
+}

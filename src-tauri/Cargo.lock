@@ -675,7 +675,7 @@ name = "clovakey"
 version = "0.1.0"
 dependencies = [
  "clovakey-core",
- "log",
+ "data-encoding",
  "serde",
  "serde_json",
  "tauri",

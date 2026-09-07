@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required so the optional in-app QR scanner may use the camera.
+	     ClovaKey decodes QR codes locally and never transmits camera data. -->
+	<key>NSCameraUsageDescription</key>
+	<string>ClovaKey uses the camera only to scan authenticator QR codes. Images are processed on your device and never sent anywhere.</string>
+	<!-- ClovaKey is a single-window utility; it should not appear as a document app. -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

@@ -253,6 +253,26 @@ impl Vault {
         *self.master.lock().unwrap() = None;
     }
 
+    /// Irreversibly erase all vault data: every account, group, and setting,
+    /// the master key in the OS keychain, and all protection metadata. After
+    /// this the vault is uninitialized (first-run) and locked.
+    pub fn wipe(&self) -> Result<()> {
+        // Remove the keychain-held master key (best effort).
+        let _ = self.keystore.delete(MASTER_KEY_LABEL);
+        {
+            let conn = self.conn.lock().unwrap();
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(
+                "DELETE FROM accounts; DELETE FROM groups; DELETE FROM settings; DELETE FROM vault_meta;",
+            )?;
+            tx.commit()?;
+            // Reclaim space so no ciphertext lingers in free pages.
+            conn.execute_batch("VACUUM;")?;
+        }
+        self.lock();
+        Ok(())
+    }
+
     /// Verify a passphrase without changing lock state. Returns false in
     /// keychain mode (there is no passphrase to check).
     pub fn verify_passphrase(&self, pass: &str) -> Result<bool> {
