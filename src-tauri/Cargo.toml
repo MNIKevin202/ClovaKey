@@ -71,13 +71,16 @@ data-encoding = { workspace = true }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
+# The updater pulls in an HTTP/TLS stack. ClovaKey is offline-first, so it is
+# behind the `updater` feature and NOT compiled into the default build.
+tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-process = { version = "2", optional = true }
 
 [features]
 # Enable the self-updater wiring. Off by default until an update endpoint + signing
 # key are provisioned (see docs/RELEASE.md); the app is fully functional without it.
-updater = []
+# Enabling it also compiles the updater's HTTP/TLS stack.
+updater = ["dep:tauri-plugin-updater", "dep:tauri-plugin-process"]
 
 [profile.release]
 panic = "abort"
