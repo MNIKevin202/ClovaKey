@@ -53,8 +53,7 @@ export const accountReveal = (id: string, passphrase: string | null) =>
 // ── Groups ───────────────────────────────────────────────────────────────────
 export const groupsList = () => invoke<Group[]>("groups_list");
 export const groupCreate = (name: string) => invoke<Group>("group_create", { name });
-export const groupRename = (id: string, name: string) =>
-  invoke<void>("group_rename", { id, name });
+export const groupRename = (id: string, name: string) => invoke<void>("group_rename", { id, name });
 export const groupDelete = (id: string) => invoke<void>("group_delete", { id });
 
 // ── Clipboard ──────────────────────────────────────────────────────────────
@@ -92,5 +91,4 @@ export const dataWipe = (passphrase: string | null) => invoke<void>("data_wipe",
 
 // ── Environment ──────────────────────────────────────────────────────────────
 export const timeStatus = () => invoke<TimeStatus>("time_status");
-export const securityCapabilities = () =>
-  invoke<SecurityCapabilities>("security_capabilities");
+export const securityCapabilities = () => invoke<SecurityCapabilities>("security_capabilities");

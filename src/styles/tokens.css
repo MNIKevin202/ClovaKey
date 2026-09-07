@@ -41,10 +41,12 @@
   --sp-10: 40px;
 
   /* ---- Typography ---- */
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    "Inter", Roboto, system-ui, sans-serif;
-  --font-code: "SF Mono", "SFMono-Regular", ui-monospace, "Cascadia Code",
-    "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Inter", Roboto, system-ui,
+    sans-serif;
+  --font-code:
+    "SF Mono", "SFMono-Regular", ui-monospace, "Cascadia Code", "JetBrains Mono", "Roboto Mono",
+    Menlo, Consolas, monospace;
 
   /* ---- Motion ---- */
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
