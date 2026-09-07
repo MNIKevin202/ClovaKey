@@ -12,6 +12,9 @@ src-tauri/target/
 # ─── Tauri generated ────────────────────────────────────────────
 src-tauri/gen/
 
+# ─── Claude Code (machine-local) ────────────────────────────────
+.claude/settings.local.json
+
 # ─── Editor / OS ────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
