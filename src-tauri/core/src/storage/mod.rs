@@ -17,14 +17,16 @@
 
 pub mod migrations;
 
+use crate::backup;
 use crate::crypto::{aead, kdf, kdf::KdfParams, SymmetricKey};
 use crate::dedupe;
 use crate::error::{CoreError, Result};
 use crate::keystore::{KeyStore, OsKeyStore};
 use crate::model::{new_id, Account, AccountPatch, GeneratedCode, Group, NewAccount, OtpConfig};
-use crate::otp::{self, Algorithm, OtpType};
+use crate::otp::{self, base32, Algorithm, OtpType};
 use data_encoding::BASE64;
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use zeroize::Zeroizing;
@@ -721,5 +723,117 @@ impl Vault {
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    // ── backup export / restore ──────────────────────────────────────────────
+
+    /// Build a portable [`backup::BackupPayload`] of the whole vault (requires
+    /// unlock). Secrets are decrypted and Base32-encoded for portability.
+    pub fn export_payload(&self) -> Result<backup::BackupPayload> {
+        let groups = self.list_groups()?;
+        let group_name: HashMap<String, String> = groups
+            .iter()
+            .map(|g| (g.id.clone(), g.name.clone()))
+            .collect();
+        let accounts = self.list_accounts()?;
+
+        let mut out_accounts = Vec::with_capacity(accounts.len());
+        self.with_master(|key| {
+            for a in &accounts {
+                let (otp, secret) = self.read_secret(key, &a.id)?;
+                out_accounts.push(backup::BackupAccount {
+                    issuer: a.issuer.clone(),
+                    account_name: a.account_name.clone(),
+                    otp_type: otp.otp_type,
+                    algorithm: otp.algorithm,
+                    digits: otp.digits,
+                    period: otp.period,
+                    counter: otp.counter,
+                    secret: base32::encode_secret(&secret),
+                    favorite: a.favorite,
+                    group: a
+                        .group_id
+                        .as_ref()
+                        .and_then(|gid| group_name.get(gid).cloned()),
+                    icon: a.icon.clone(),
+                    sort_order: a.sort_order,
+                });
+            }
+            Ok(())
+        })?;
+
+        Ok(backup::BackupPayload {
+            format_version: backup::FORMAT_VERSION,
+            exported_at: otp::unix_now() as i64,
+            accounts: out_accounts,
+            groups: groups
+                .iter()
+                .map(|g| backup::BackupGroup {
+                    name: g.name.clone(),
+                    sort_order: g.sort_order,
+                })
+                .collect(),
+            settings: self.all_settings()?,
+        })
+    }
+
+    /// Import accounts, groups from a [`backup::BackupPayload`] (requires unlock).
+    /// Groups are remapped/created by name; duplicates are handled per `policy`.
+    pub fn import_payload(
+        &self,
+        payload: &backup::BackupPayload,
+        policy: backup::DuplicatePolicy,
+    ) -> Result<backup::ImportSummary> {
+        let mut summary = backup::ImportSummary::default();
+
+        // Map existing group names → id, creating any missing ones.
+        let mut group_ids: HashMap<String, String> = self
+            .list_groups()?
+            .into_iter()
+            .map(|g| (dedupe::normalize_name(&g.name), g.id))
+            .collect();
+        for g in &payload.groups {
+            let norm = dedupe::normalize_name(&g.name);
+            if let std::collections::hash_map::Entry::Vacant(e) = group_ids.entry(norm) {
+                let created = self.create_group(&g.name)?;
+                e.insert(created.id);
+                summary.groups_created += 1;
+            }
+        }
+
+        let mut seen = self.existing_fingerprints()?;
+        for a in &payload.accounts {
+            let secret = base32::decode_secret(&a.secret)?;
+            let otp = OtpConfig {
+                otp_type: a.otp_type,
+                algorithm: a.algorithm,
+                digits: otp::validate_digits(a.digits)?,
+                period: a.period,
+                counter: a.counter,
+            };
+            let fp = self.fingerprint_for(&secret, &otp)?;
+            let is_dup = seen.iter().any(|e| dedupe::fingerprints_match(e, &fp));
+            if is_dup && policy == backup::DuplicatePolicy::Skip {
+                summary.skipped += 1;
+                continue;
+            }
+            let group_id = a
+                .group
+                .as_ref()
+                .and_then(|n| group_ids.get(&dedupe::normalize_name(n)).cloned());
+            let new = NewAccount {
+                issuer: a.issuer.clone(),
+                account_name: a.account_name.clone(),
+                otp,
+                group_id,
+                favorite: a.favorite,
+                icon: a.icon.clone(),
+            };
+            self.add_account(&new, &secret)?;
+            seen.push(fp);
+            summary.imported += 1;
+        }
+
+        Ok(summary)
     }
 }

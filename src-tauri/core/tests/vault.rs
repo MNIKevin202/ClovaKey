@@ -213,6 +213,68 @@ fn export_account_uri_round_trips() {
 }
 
 #[test]
+fn backup_export_restore_cross_vault() {
+    use clovakey_core::backup;
+
+    // Source vault with two accounts and a group.
+    let src = temp_vault();
+    src.setup(None).unwrap();
+    let g = src.create_group("Work").unwrap();
+    let secret = base32::decode_secret(SEED_B32).unwrap();
+    let a = src
+        .add_account(&totp_account("kevin@example.com"), &secret)
+        .unwrap();
+    src.update_account(
+        &a.id,
+        &AccountPatch {
+            group_id: Some(Some(g.id.clone())),
+            favorite: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let other = base32::decode_secret("JBSWY3DPEHPK3PXP").unwrap();
+    src.add_account(&totp_account("second"), &other).unwrap();
+
+    // Export → seal → bytes.
+    let payload = src.export_payload().unwrap();
+    let bytes = backup::seal_payload(&payload, "portable-backup-pw").unwrap();
+
+    // Wrong password fails.
+    assert!(backup::open_payload(&bytes, "nope").is_err());
+
+    // Restore into a brand-new vault (simulating another machine).
+    let dst = temp_vault();
+    dst.setup(Some("different-local-pw")).unwrap();
+    let restored = backup::open_payload(&bytes, "portable-backup-pw").unwrap();
+    let summary = dst
+        .import_payload(&restored, backup::DuplicatePolicy::Skip)
+        .unwrap();
+    assert_eq!(summary.imported, 2);
+    assert_eq!(summary.groups_created, 1);
+
+    // The restored account generates the same code as the source.
+    let dst_accounts = dst.list_accounts().unwrap();
+    let kevin = dst_accounts
+        .iter()
+        .find(|a| a.account_name == "kevin@example.com")
+        .unwrap();
+    assert!(kevin.favorite);
+    assert!(kevin.group_id.is_some());
+    let src_code = src.generate_code(&a.id).unwrap().code;
+    let dst_code = dst.generate_code(&kevin.id).unwrap().code;
+    assert_eq!(src_code, dst_code);
+
+    // Re-importing the same backup with Skip imports nothing new.
+    let again = backup::open_payload(&bytes, "portable-backup-pw").unwrap();
+    let summary2 = dst
+        .import_payload(&again, backup::DuplicatePolicy::Skip)
+        .unwrap();
+    assert_eq!(summary2.imported, 0);
+    assert_eq!(summary2.skipped, 2);
+}
+
+#[test]
 fn passphrase_enable_disable_change() {
     let v = temp_vault();
     v.setup(None).unwrap();
