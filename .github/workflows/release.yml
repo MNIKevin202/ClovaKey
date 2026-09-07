@@ -18,11 +18,13 @@ jobs:
         include:
           - name: macOS (Apple Silicon + Intel)
             os: macos-latest
-            target: universal-apple-darwin
+            # Real rustup targets for the toolchain (universal is a Tauri
+            # meta-target passed to `tauri build` via `args`, not a rustup target).
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
             args: "--target universal-apple-darwin"
           - name: Windows x64
             os: windows-latest
-            target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
             args: ""
     runs-on: ${{ matrix.os }}
     steps:
@@ -35,7 +37,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets }}
 
       - uses: Swatinem/rust-cache@v2
         with:
