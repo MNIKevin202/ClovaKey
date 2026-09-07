@@ -45,20 +45,54 @@ jobs:
 
       - run: npm ci
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+      # Only enable macOS code-signing + notarization when a certificate secret
+      # is actually present. Otherwise these env vars must stay UNSET — the Tauri
+      # bundler treats a set-but-empty APPLE_CERTIFICATE as "sign this" and fails
+      # on `security import`. With them unset, macOS produces an unsigned .dmg.
+      # (The `secrets` context can't be used in `if:`, so we gate in the shell.)
+      - name: Provision Apple signing (if configured)
+        if: runner.os == 'macOS'
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── macOS signing + notarization (optional; unsigned if unset) ──
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # ── Updater signing (optional; only if auto-update is enabled) ──
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            {
+              echo "APPLE_CERTIFICATE<<__EOF__"; echo "$APPLE_CERTIFICATE"; echo "__EOF__"
+              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+            echo "Apple signing configured."
+          else
+            echo "No Apple certificate secret — building an unsigned .dmg."
+          fi
+
+      # Likewise, only pass the updater signing key when a key is configured.
+      - name: Provision updater signing (if configured)
+        shell: bash
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            {
+              echo "TAURI_SIGNING_PRIVATE_KEY<<__EOF__"; echo "$TAURI_SIGNING_PRIVATE_KEY"; echo "__EOF__"
+              echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "ClovaKey ${{ github.ref_name }}"
