@@ -1,0 +1,61 @@
+# ─── Dependencies ───────────────────────────────────────────────
+node_modules/
+/dist/
+/build/
+
+# ─── Rust / Cargo ───────────────────────────────────────────────
+src-tauri/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# ─── Tauri generated ────────────────────────────────────────────
+src-tauri/gen/
+
+# ─── Editor / OS ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# ─── Environment / local ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ═════════════════════════════════════════════════════════════════
+#  SECURITY — never commit ANY of the following
+# ═════════════════════════════════════════════════════════════════
+# Signing / update keys
+*.key
+*.pem
+*.p12
+*.keystore
+*.jks
+*.cer
+*.p8
+tauri-signing-key*
+*.tauri.key
+**/updater-key*
+
+# Real authenticator data / exports / backups
+*.clovakey
+**/real-*
+**/*secret*.txt
+**/*migration*.png
+**/*migration*.jpg
+**/google-authenticator-export*
+**/*.otpauth
+**/personal-fixtures/
+
+# Local vault databases (never in VCS)
+*.clovakey.db
+*.vault
+clovakey.sqlite*
+
+# Misc credentials
+credentials.json
+secrets.json
