@@ -74,7 +74,24 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            // "Keep running in the menu bar" on window close, when enabled.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let keep = app
+                    .state::<AppState>()
+                    .vault
+                    .get_setting("close_to_tray")
+                    .ok()
+                    .flatten()
+                    .map(|v| v == "true")
+                    .unwrap_or(false);
+                if keep {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             #[cfg(desktop)]
             {

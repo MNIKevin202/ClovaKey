@@ -28,42 +28,125 @@ fn main() {
     let work = vault.create_group("Work").unwrap();
     let personal = vault.create_group("Personal").unwrap();
 
-    // (issuer, account, base32 secret [synthetic], favorite, group, otp)
-    let demos: Vec<(&str, &str, &str, bool, Option<&str>, OtpConfig)> = vec![
-        ("GitHub", "kevin@example.com", "JBSWY3DPEHPK3PXP", true, Some(&personal.id), totp(Algorithm::Sha1, 6)),
-        ("Google", "kevin.poulos@gmail.com", "GEZDGNBVGY3TQOJQ", true, Some(&personal.id), totp(Algorithm::Sha1, 6)),
-        ("Amazon Web Services", "kevin-admin", "KRSXG5CTMVRXEZLUGEZA", false, Some(&work.id), totp(Algorithm::Sha256, 8)),
-        ("Microsoft", "kevin@outlook.com", "MFRGGZDFMZTWQ2LK", false, Some(&work.id), totp(Algorithm::Sha1, 6)),
-        ("Stripe", "acct_1Qk2Zx", "NBSWY3DPEB3W64TM", false, Some(&work.id), totp(Algorithm::Sha1, 6)),
-        ("Discord", "kevin", "ONSWG4TFOQFA====", false, Some(&personal.id), totp(Algorithm::Sha1, 6)),
-        ("Cloudflare", "kevin@example.com", "PEBGC5DFEBSGKZDF", false, None, totp(Algorithm::Sha1, 6)),
-        ("Proton", "kevin@proton.me", "QFXHIYLDMVXHIYLB", false, Some(&personal.id), totp(Algorithm::Sha512, 6)),
-        ("Legacy VPN", "token-7781", "RFYHA3DPEHPK3PXP", false, Some(&work.id), hotp()),
+    struct Demo {
+        issuer: &'static str,
+        account: &'static str,
+        secret: &'static str, // synthetic Base32
+        favorite: bool,
+        group: Option<String>,
+        otp: OtpConfig,
+    }
+
+    let demos = vec![
+        Demo {
+            issuer: "GitHub",
+            account: "kevin@example.com",
+            secret: "JBSWY3DPEHPK3PXP",
+            favorite: true,
+            group: Some(personal.id.clone()),
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Google",
+            account: "kevin.poulos@gmail.com",
+            secret: "GEZDGNBVGY3TQOJQ",
+            favorite: true,
+            group: Some(personal.id.clone()),
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Amazon Web Services",
+            account: "kevin-admin",
+            secret: "KRSXG5CTMVRXEZLUGEZA",
+            favorite: false,
+            group: Some(work.id.clone()),
+            otp: totp(Algorithm::Sha256, 8),
+        },
+        Demo {
+            issuer: "Microsoft",
+            account: "kevin@outlook.com",
+            secret: "MFRGGZDFMZTWQ2LK",
+            favorite: false,
+            group: Some(work.id.clone()),
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Stripe",
+            account: "acct_1Qk2Zx",
+            secret: "NBSWY3DPEB3W64TM",
+            favorite: false,
+            group: Some(work.id.clone()),
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Discord",
+            account: "kevin",
+            secret: "ONSWG4TFOQFA",
+            favorite: false,
+            group: Some(personal.id.clone()),
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Cloudflare",
+            account: "kevin@example.com",
+            secret: "PEBGC5DFEBSGKZDF",
+            favorite: false,
+            group: None,
+            otp: totp(Algorithm::Sha1, 6),
+        },
+        Demo {
+            issuer: "Proton",
+            account: "kevin@proton.me",
+            secret: "QFXHIYLDMVXHIYLB",
+            favorite: false,
+            group: Some(personal.id.clone()),
+            otp: totp(Algorithm::Sha512, 6),
+        },
+        Demo {
+            issuer: "Legacy VPN",
+            account: "token-7781",
+            secret: "RFYHA3DPEHPK3PXP",
+            favorite: false,
+            group: Some(work.id.clone()),
+            otp: hotp(),
+        },
     ];
 
-    for (issuer, account, secret_b32, fav, group, otp) in demos {
-        let secret = base32::decode_secret(secret_b32).expect("valid synthetic secret");
+    for d in demos {
+        let secret = base32::decode_secret(d.secret).expect("valid synthetic secret");
         let new = NewAccount {
-            issuer: Some(issuer.to_string()),
-            account_name: account.to_string(),
-            otp,
-            group_id: group.map(|s| s.to_string()),
-            favorite: fav,
+            issuer: Some(d.issuer.to_string()),
+            account_name: d.account.to_string(),
+            otp: d.otp,
+            group_id: d.group,
+            favorite: d.favorite,
             icon: None,
         };
         vault.add_account(&new, &secret).expect("add");
-        println!("  + {issuer} / {account}");
+        println!("  + {} / {}", d.issuer, d.account);
     }
 
     println!("done. {} accounts.", vault.list_accounts().unwrap().len());
 }
 
 fn totp(algorithm: Algorithm, digits: u8) -> OtpConfig {
-    OtpConfig { otp_type: OtpType::Totp, algorithm, digits, period: 30, counter: 0 }
+    OtpConfig {
+        otp_type: OtpType::Totp,
+        algorithm,
+        digits,
+        period: 30,
+        counter: 0,
+    }
 }
 
 fn hotp() -> OtpConfig {
-    OtpConfig { otp_type: OtpType::Hotp, algorithm: Algorithm::Sha1, digits: 6, period: 30, counter: 0 }
+    OtpConfig {
+        otp_type: OtpType::Hotp,
+        algorithm: Algorithm::Sha1,
+        digits: 6,
+        period: 30,
+        counter: 0,
+    }
 }
 
 fn dirs_app_data() -> std::path::PathBuf {
