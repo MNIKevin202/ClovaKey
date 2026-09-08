@@ -26,6 +26,10 @@ export function GoogleImportWizard({ seed }: { seed?: GoogleSeed }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [stage, setStage] = useState<Stage>("add");
+  // Mirrored into a ref purely so the unmount cleanup below can read the current
+  // stage without taking a dependency on it.
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [items, setItems] = useState<PreviewItem[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -94,13 +98,18 @@ export function GoogleImportWizard({ seed }: { seed?: GoogleSeed }) {
   }, []);
 
   // Cancel the session if the user closes mid-flow (zeroizes staged secrets).
+  //
+  // This must run on unmount only. Depending on `stage` made React run the cleanup
+  // on every stage change, so advancing from "add" to "review" — the moment the
+  // accounts are ready to import — cancelled the very session the import needs, and
+  // committing then failed every time. The stage is read through a ref instead.
   useEffect(() => {
     return () => {
-      if (sessionRef.current && stage !== "done") {
+      if (sessionRef.current && stageRef.current !== "done") {
         void ipc.googleImportCancel(sessionRef.current);
       }
     };
-  }, [stage]);
+  }, []);
 
   const toggle = (index: number) => {
     setSelected((prev) => {
