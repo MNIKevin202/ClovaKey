@@ -442,15 +442,32 @@ pub fn google_import_add_image(
 ) -> AppResult<BatchProgressDto> {
     let bytes = decode_image_b64(&image_base64)?;
     let contents = clovakey_core::qr::decode_all(&bytes)?;
+    // Distinguish "no QR was readable" from "a QR was read but it is the wrong
+    // kind". Reporting the latter for both told people their export code was
+    // invalid when the real problem was that nothing had been decoded at all.
+    if contents.is_empty() {
+        return Err(AppError::new(
+            "qr_not_found",
+            "No QR code could be read from that image. Export codes are dense, so a \
+             small or heavily compressed screenshot often will not decode — try a \
+             full-resolution one, or use \u{201c}Paste export link\u{201d} instead.",
+        ));
+    }
     let migrations: Vec<_> = contents
         .iter()
         .filter(|c| classify(c) == ScannedKind::Migration)
         .collect();
     if migrations.is_empty() {
-        return Err(AppError::new(
-            "migration_decode",
-            "That image doesn't contain a Google Authenticator export QR code.",
-        ));
+        let message = if contents.iter().any(|c| classify(c) == ScannedKind::Otpauth) {
+            "That is a single-account QR code, not a Google Authenticator export. Add \
+             it with Add account, or in Google Authenticator choose \u{22ef} \u{2192} \
+             Transfer accounts \u{2192} Export to move everything at once."
+        } else {
+            "A QR code was read, but it is not a Google Authenticator export. In Google \
+             Authenticator choose \u{22ef} \u{2192} Transfer accounts \u{2192} Export, \
+             then bring that code here."
+        };
+        return Err(AppError::new("migration_decode", message));
     }
     let mut last = None;
     for c in migrations {

@@ -33,9 +33,12 @@ fn load_luma(bytes: &[u8]) -> Result<image::GrayImage> {
     Ok(img.to_luma8())
 }
 
-/// Decode every QR code found in an image, returning their text contents.
-pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
-    let luma = load_luma(bytes)?;
+/// Largest pixel count we are willing to upscale to, so a big screenshot cannot
+/// turn one decode attempt into a huge allocation.
+const MAX_SCALED_PIXELS: u64 = 40_000_000;
+
+/// Run the detector over one prepared image.
+fn scan(luma: &image::GrayImage) -> Vec<String> {
     let (w, h) = luma.dimensions();
     let mut prepared =
         rqrr::PreparedImage::prepare_from_greyscale(w as usize, h as usize, |x, y| {
@@ -48,6 +51,64 @@ pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
             if !content.is_empty() {
                 out.push(content);
             }
+        }
+    }
+    out
+}
+
+/// Light modules on a dark background — what a screenshot of a dark-themed screen,
+/// or a theme-inverted render, produces. The detector expects the opposite.
+fn inverted(luma: &image::GrayImage) -> image::GrayImage {
+    let mut out = luma.clone();
+    for px in out.pixels_mut() {
+        px[0] = 255 - px[0];
+    }
+    out
+}
+
+/// Double the resolution. Export codes are dense, and a downscaled screenshot can
+/// leave each module barely more than a pixel; resampling gives the detector edges
+/// it can actually lock onto.
+fn upscaled(luma: &image::GrayImage) -> Option<image::GrayImage> {
+    let (w, h) = luma.dimensions();
+    if u64::from(w) * u64::from(h) * 4 > MAX_SCALED_PIXELS {
+        return None;
+    }
+    Some(image::imageops::resize(
+        luma,
+        w.saturating_mul(2),
+        h.saturating_mul(2),
+        image::imageops::FilterType::CatmullRom,
+    ))
+}
+
+/// Decode every QR code found in an image, returning their text contents.
+///
+/// One detection pass is not enough in practice. Google Authenticator's export code
+/// carries every account at once, so it is dense, and what people actually bring is
+/// a screenshot — frequently downscaled, sometimes inverted by a dark theme. Each
+/// variation is tried in turn and the first that yields anything wins, so the common
+/// case still costs a single pass.
+pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
+    let luma = load_luma(bytes)?;
+
+    let mut found = scan(&luma);
+    if found.is_empty() {
+        found = scan(&inverted(&luma));
+    }
+    if found.is_empty() {
+        if let Some(big) = upscaled(&luma) {
+            found = scan(&big);
+            if found.is_empty() {
+                found = scan(&inverted(&big));
+            }
+        }
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    for c in found {
+        if !out.contains(&c) {
+            out.push(c);
         }
     }
     Ok(out)
@@ -137,5 +198,64 @@ mod tests {
         let data = "otpauth-migration://offline?data=CjEKCkhlbGxvIXt9Kv8SBnNlY3JldA";
         let png = render_png(data, 6, 4);
         assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    /// Invert a rendered PNG, producing the light-on-dark image you get from a
+    /// screenshot of a dark-themed screen.
+    fn invert_png(png: &[u8]) -> Vec<u8> {
+        let mut img = image::load_from_memory(png).unwrap().to_luma8();
+        for px in img.pixels_mut() {
+            px[0] = 255 - px[0];
+        }
+        let mut buf = Vec::new();
+        image::DynamicImage::ImageLuma8(img)
+            .write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    /// A payload the size of a real export — Google Authenticator packs every
+    /// account into one code, so the result is a high-version, dense QR.
+    fn dense_migration() -> String {
+        format!(
+            "otpauth-migration://offline?data={}",
+            "CjEKCkhlbGxvIXt9Kv8SBnNlY3JldA".repeat(12)
+        )
+    }
+
+    /// The regression behind "that image doesn't contain an export QR code": a
+    /// light-on-dark code decoded to nothing, because the detector expects dark
+    /// modules on a light field, and the UI then blamed the contents.
+    #[test]
+    fn decodes_an_inverted_migration_qr() {
+        let data = "otpauth-migration://offline?data=CjEKCkhlbGxvIXt9Kv8SBnNlY3JldA";
+        let png = invert_png(&render_png(data, 6, 4));
+        assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    /// A dense export rendered small, as a downscaled screenshot would be.
+    #[test]
+    fn decodes_a_dense_migration_qr_at_small_scale() {
+        let data = dense_migration();
+        let png = render_png(&data, 2, 4);
+        assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    /// ...and dense *and* inverted, which is the worst realistic combination.
+    #[test]
+    fn decodes_a_dense_inverted_migration_qr() {
+        let data = dense_migration();
+        let png = invert_png(&render_png(&data, 3, 4));
+        assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    #[test]
+    fn finds_nothing_in_a_blank_image() {
+        let blank = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut png = Vec::new();
+        image::DynamicImage::ImageLuma8(blank)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        assert!(decode_all(&png).unwrap().is_empty());
     }
 }
