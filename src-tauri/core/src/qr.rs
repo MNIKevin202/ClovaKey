@@ -56,6 +56,26 @@ fn scan(luma: &image::GrayImage) -> Vec<String> {
     out
 }
 
+/// Second decoder. rqrr and quircs are independent implementations and fail on
+/// different images — quircs is a port of quirc, which tends to cope better with
+/// dense codes, which is exactly where a Google Authenticator export lands.
+fn scan_quircs(luma: &image::GrayImage) -> Vec<String> {
+    let (w, h) = luma.dimensions();
+    let mut decoder = quircs::Quirc::default();
+    let mut out = Vec::new();
+    for code in decoder.identify(w as usize, h as usize, luma.as_raw()) {
+        let Ok(code) = code else { continue };
+        if let Ok(data) = code.decode() {
+            if let Ok(text) = String::from_utf8(data.payload) {
+                if !text.is_empty() {
+                    out.push(text);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Light modules on a dark background — what a screenshot of a dark-themed screen,
 /// or a theme-inverted render, produces. The detector expects the opposite.
 fn inverted(luma: &image::GrayImage) -> image::GrayImage {
@@ -84,6 +104,15 @@ fn scaled(luma: &image::GrayImage, factor: u32) -> Option<image::GrayImage> {
     ))
 }
 
+/// Run both decoders over one image, preferring whichever finds something.
+fn scan_both(luma: &image::GrayImage) -> Vec<String> {
+    let mut found = scan(luma);
+    if found.is_empty() {
+        found = scan_quircs(luma);
+    }
+    found
+}
+
 /// Decode every QR code found in an image, returning their text contents.
 ///
 /// One detection pass is not enough in practice. Google Authenticator's export code
@@ -96,9 +125,9 @@ pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
 
     // Cheapest first: most images decode on the very first attempt, and the ladder
     // below only runs when something has already failed.
-    let mut found = scan(&luma);
+    let mut found = scan_both(&luma);
     if found.is_empty() {
-        found = scan(&inverted(&luma));
+        found = scan_both(&inverted(&luma));
     }
 
     // Then progressively more resolution. A dense export code photographed or
@@ -112,9 +141,9 @@ pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
         let Some(bigger) = scaled(&luma, factor) else {
             break;
         };
-        found = scan(&bigger);
+        found = scan_both(&bigger);
         if found.is_empty() {
-            found = scan(&inverted(&bigger));
+            found = scan_both(&inverted(&bigger));
         }
     }
 
@@ -272,6 +301,36 @@ mod tests {
         let data = dense_migration();
         let png = render_png(&data, 1, 4);
         assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    /// The second decoder must actually work on its own, not merely compile. If
+    /// rqrr always answered first this would silently become dead code, and the
+    /// fallback would be worthless precisely when it is needed.
+    #[test]
+    fn the_second_decoder_reads_a_dense_migration_qr() {
+        let data = dense_migration();
+        let png = render_png(&data, 4, 4);
+        let luma = image::load_from_memory(&png).unwrap().to_luma8();
+        let found = scan_quircs(&luma);
+        assert!(found.iter().any(|c| *c == data), "quircs found {found:?}");
+    }
+
+    /// ...including inverted, since the ladder feeds it inverted images too.
+    #[test]
+    fn the_second_decoder_reads_an_inverted_qr() {
+        let data = "otpauth-migration://offline?data=CjEKCkhlbGxvIXt9Kv8SBnNlY3JldA";
+        let png = invert_png(&render_png(data, 6, 4));
+        let luma = image::load_from_memory(&png).unwrap().to_luma8();
+        let mut found = scan_quircs(&luma);
+        if found.is_empty() {
+            // quircs, like rqrr, expects dark-on-light; the ladder hands it both.
+            let mut inv = luma.clone();
+            for px in inv.pixels_mut() {
+                px[0] = 255 - px[0];
+            }
+            found = scan_quircs(&inv);
+        }
+        assert!(found.iter().any(|c| c == data), "quircs found {found:?}");
     }
 
     #[test]

@@ -26,6 +26,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 keyring = { workspace = true }
 rqrr = { workspace = true }
+quircs = { workspace = true }
 image = { workspace = true }
 qrcode = { workspace = true }
 
