@@ -66,18 +66,20 @@ fn inverted(luma: &image::GrayImage) -> image::GrayImage {
     out
 }
 
-/// Double the resolution. Export codes are dense, and a downscaled screenshot can
-/// leave each module barely more than a pixel; resampling gives the detector edges
-/// it can actually lock onto.
-fn upscaled(luma: &image::GrayImage) -> Option<image::GrayImage> {
+/// Resample by `factor`. Export codes are dense — a phone screenshot can leave each
+/// module only a pixel or two wide, which is below what the detector can resolve —
+/// so giving it more pixels to work with is usually what unsticks a stubborn image.
+/// Returns None when the result would be unreasonably large.
+fn scaled(luma: &image::GrayImage, factor: u32) -> Option<image::GrayImage> {
     let (w, h) = luma.dimensions();
-    if u64::from(w) * u64::from(h) * 4 > MAX_SCALED_PIXELS {
+    let (nw, nh) = (w.checked_mul(factor)?, h.checked_mul(factor)?);
+    if u64::from(nw) * u64::from(nh) > MAX_SCALED_PIXELS {
         return None;
     }
     Some(image::imageops::resize(
         luma,
-        w.saturating_mul(2),
-        h.saturating_mul(2),
+        nw,
+        nh,
         image::imageops::FilterType::CatmullRom,
     ))
 }
@@ -92,16 +94,27 @@ fn upscaled(luma: &image::GrayImage) -> Option<image::GrayImage> {
 pub fn decode_all(bytes: &[u8]) -> Result<Vec<String>> {
     let luma = load_luma(bytes)?;
 
+    // Cheapest first: most images decode on the very first attempt, and the ladder
+    // below only runs when something has already failed.
     let mut found = scan(&luma);
     if found.is_empty() {
         found = scan(&inverted(&luma));
     }
-    if found.is_empty() {
-        if let Some(big) = upscaled(&luma) {
-            found = scan(&big);
-            if found.is_empty() {
-                found = scan(&inverted(&big));
-            }
+
+    // Then progressively more resolution. A dense export code photographed or
+    // screenshotted at phone scale can need a surprising amount of upsampling before
+    // its modules separate, and one code in a multi-part export failing while its
+    // siblings succeed is exactly what that looks like.
+    for factor in [2u32, 3, 4] {
+        if !found.is_empty() {
+            break;
+        }
+        let Some(bigger) = scaled(&luma, factor) else {
+            break;
+        };
+        found = scan(&bigger);
+        if found.is_empty() {
+            found = scan(&inverted(&bigger));
         }
     }
 
@@ -246,6 +259,18 @@ mod tests {
     fn decodes_a_dense_inverted_migration_qr() {
         let data = dense_migration();
         let png = invert_png(&render_png(&data, 3, 4));
+        assert_eq!(decode_one(&png).unwrap(), data);
+    }
+
+    /// The case behind "4 of 5 scanned": in a multi-part export one code can be
+    /// denser than its siblings, and at phone-screenshot scale its modules fall
+    /// below what the detector resolves — so that one image fails while the rest
+    /// succeed. Rendered at one pixel per module, this needs more upsampling than
+    /// the first rung of the ladder provides.
+    #[test]
+    fn decodes_a_dense_migration_qr_at_one_pixel_per_module() {
+        let data = dense_migration();
+        let png = render_png(&data, 1, 4);
         assert_eq!(decode_one(&png).unwrap(), data);
     }
 
