@@ -312,7 +312,7 @@ mod tests {
         let png = render_png(&data, 4, 4);
         let luma = image::load_from_memory(&png).unwrap().to_luma8();
         let found = scan_quircs(&luma);
-        assert!(found.iter().any(|c| *c == data), "quircs found {found:?}");
+        assert!(found.contains(&data), "quircs found {found:?}");
     }
 
     /// ...including inverted, since the ladder feeds it inverted images too.
