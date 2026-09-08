@@ -414,9 +414,13 @@ fn add_migration_payload(
     payload: google::MigrationPayload,
 ) -> AppResult<BatchProgressDto> {
     let mut sessions = state.google_sessions.lock().unwrap();
-    let session = sessions
-        .get_mut(session_id)
-        .ok_or_else(|| AppError::new("not_found", "Import session expired. Start again."))?;
+    let session = sessions.get_mut(session_id).ok_or_else(|| {
+        AppError::new(
+            "not_found",
+            "That import session is no longer available — it was cancelled, or the app \
+                 restarted. Start the import again.",
+        )
+    })?;
     let progress = session.collector.add(payload)?;
     if progress.complete {
         session.finalize(&state.vault)?;
@@ -483,9 +487,13 @@ pub fn google_import_preview(
     session_id: String,
 ) -> AppResult<Vec<PreviewItem>> {
     let mut sessions = state.google_sessions.lock().unwrap();
-    let session = sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| AppError::new("not_found", "Import session expired. Start again."))?;
+    let session = sessions.get_mut(&session_id).ok_or_else(|| {
+        AppError::new(
+            "not_found",
+            "That import session is no longer available — it was cancelled, or the app \
+                 restarted. Start the import again.",
+        )
+    })?;
     if !session.finalized && session.collector.is_complete() {
         session.finalize(&state.vault)?;
     }
@@ -509,17 +517,35 @@ pub fn google_import_commit(
     session_id: String,
     selections: Vec<ImportSelection>,
 ) -> AppResult<ImportSummary> {
-    // Take ownership of the session so its secrets are dropped/zeroized when done.
+    // Take ownership so the staged secrets are dropped and zeroized when this
+    // returns. Anything that fails before the accounts are actually written puts the
+    // session back, so the import can be retried — losing it would mean re-scanning
+    // every export QR code, which is a punishing price for a transient error.
     let mut session = {
         let mut sessions = state.google_sessions.lock().unwrap();
-        sessions
-            .remove(&session_id)
-            .ok_or_else(|| AppError::new("not_found", "Import session expired. Start again."))?
+        sessions.remove(&session_id).ok_or_else(|| {
+            AppError::new(
+                "not_found",
+                "That import session is no longer available — it may already have been \
+                 imported, or cancelled. Check your accounts before starting again.",
+            )
+        })?
+    };
+    let restore = |state: &AppState, session: GoogleSession| {
+        state
+            .google_sessions
+            .lock()
+            .unwrap()
+            .insert(session_id.clone(), session);
     };
     if !session.finalized {
         if session.collector.is_complete() {
-            session.finalize(&state.vault)?;
+            if let Err(e) = session.finalize(&state.vault) {
+                restore(&state, session);
+                return Err(e.into());
+            }
         } else {
+            restore(&state, session);
             return Err(AppError::new(
                 "migration_decode",
                 "Scan all export QR codes before importing.",
@@ -529,10 +555,10 @@ pub fn google_import_commit(
 
     let mut summary = ImportSummary::default();
     for sel in selections {
-        let rec = session
-            .records
-            .get(sel.index)
-            .ok_or_else(|| AppError::new("not_found", "Selected account no longer available."))?;
+        let Some(rec) = session.records.get(sel.index) else {
+            summary.skipped += 1;
+            continue;
+        };
         let issuer = sel
             .issuer
             .map(|s| s.trim().to_string())
@@ -555,8 +581,14 @@ pub fn google_import_commit(
             favorite: sel.favorite,
             icon: None,
         };
-        state.vault.add_account(&new, &rec.secret)?;
-        summary.imported += 1;
+        // Count a failure rather than aborting: with fifty accounts in one export, a
+        // single rejected entry should not discard the other forty-nine.
+        match state.vault.add_account(&new, &rec.secret) {
+            Ok(_) => summary.imported += 1,
+            // Reported to the caller as `skipped` rather than logged; this crate
+            // pulls in no logging framework, and a count is what the UI shows.
+            Err(_) => summary.skipped += 1,
+        }
     }
     Ok(summary)
 }
